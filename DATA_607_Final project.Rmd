@@ -1,0 +1,343 @@
+---
+title: "DATA_607_Final_Presentation"
+author: "Md Jalal Uddin"
+date: "December 8, 2016"
+output: html_document
+---
+Introduction: 
+My project is to see which region has higher HIV death rate among the countries, and also which countries have higher HIV death rate. After finding the countries, I will find from my research that which variable has higher impact on HIV control. If I can reach a conclussion, than it would be helpful for Highest HIV death nation to focus on those variable for controlling HIV infection or death. For this research I downloaded data from WHO (World Health Organization), use MySQL database. I have shown my work step by step as follows:
+
+```{r}
+#Create function to download a package
+#Sources:http://stackoverflow.com/questions/9341635/check-for-installed-packages-before-running-install-packages
+
+packages <- function(x){
+  x <- as.character(match.call()[[2]])
+  if (!require(x,character.only=TRUE)){
+    install.packages(pkgs=x,repos="http://cran.r-project.org")
+    require(x,character.only=TRUE)
+  }
+}
+
+#install required packages by using the created function. 
+
+packages("rmongodb")
+packages("rjson")
+packages("mongolite")
+packages("RMongo")
+packages("RMySQL")
+packages("DBI")  
+
+library(stringr)
+library(RCurl)
+library(knitr)
+library(rmongodb)
+library(jsonlite)
+library(dplyr)
+library(sqldf)
+library(tidyr)
+library(ggplot2)
+library(rjson)
+library(mongolite)
+library(RMongo)
+library(RMySQL)
+library(DBI)
+
+```
+
+
+```{r}
+library(RMySQL)
+HIV_db1 = dbConnect(MySQL(), user='root', password='abcd1234', host='localhost')
+dbSendQuery(HIV_db1, 'CREATE SCHEMA HIV_Final4;')
+dbSendQuery(HIV_db1, 'use HIV_Final4;')
+
+dbSendQuery(HIV_db1,'CREATE TABLE HIV_Death (
+            Region_Id int not null primary key,
+			      Region_name varchar(25) NOT null,            
+            Number_of_Death varchar(25)
+           );')
+
+dbSendQuery(HIV_db1,'CREATE TABLE HIV_Infection (
+            Infection_Region_Id int not null primary key,
+		      	Adult_infection_Rate varchar(25) NOT null,            
+            Number_of_Infection varchar(25)
+            );')
+
+dbSendQuery(HIV_db1,'CREATE TABLE HIV_Living (
+            Living_Region_Id int not null primary key,
+            Number_of_Living varchar(25)
+            );')
+
+dbSendQuery(HIV_db1,'CREATE TABLE Mother_Child_Transmission (
+            Transmission_Id int not null primary key,
+            Country_Name varchar (100),
+            Number_Pregnant_antiretrovirals_preventing varchar (10),
+            Number_HIV_Need_antiretrovirals varchar (10),
+            Percentage_HIV_Receive_antiretrovirals varchar (10)
+            );')
+
+
+dbSendQuery(HIV_db1,'CREATE TABLE HIV_Counselling_Receive (
+            Counselling_Id int not null primary key,
+            Country_Name varchar (100),
+            Number_Receive_Counselling varchar (25),
+            Number_Receive_Counselling_PerThousand varchar (25)
+            );')
+
+
+dbSendQuery(HIV_db1,'CREATE TABLE HIV_Theraphy_Coverage (
+            Coverage_Id int not null primary key,
+            Country_Name varchar (200),
+            Percentage_Receive_Therapy varchar (255),
+            Number_Receive_Therapy varchar (255)
+            );')
+
+dbSendQuery(HIV_db1,'CREATE TABLE Highest_HIV_death (
+            Country_Id int not null primary key,
+            Country_Name varchar (200),
+            total_death varchar (255),
+            total_population varchar (255),
+            Percentage_death varchar (255)
+            ); ')
+
+
+```
+
+I download HIV death, infection and living with HIV virus data from World Health Organization database into my computer desktop and import them from my desktop to MySQL database into the following  HIV_Death, HIV_Infection, HIV_Living table respectively. After inserting the values I creat a join statement into MySQL to combine those three tables. My quesry is as follows:
+
+(SELECT Region_Id, Region_name, Number_of_Death, Adult_infection_Rate, 
+           Number_of_Infection, Number_of_Living FROM HIV_Death AS d
+                          INNER JOIN HIV_Infection AS i
+                          ON d.Region_Id = i.Infection_Region_Id
+                          INNER JOIN HIV_Living AS l
+                          ON i.Infection_Region_Id = l.Living_Region_Id;)
+                          
+  I save those entry into my desktop as  Result_Death_Infection_Living.CSV file and read the file into R markdown by following read.csv statement.   
+
+```{r}
+# Read Result_Death_Infection_Living.CSV file
+HIV_Data <- read.csv('C:/Users/sql_ent_svc/Desktop/Final_presentation_Data/Result_Death_Infection_Living.CSV')
+
+head (HIV_Data)
+
+```
+
+```{r}
+#Cleanning the data by deleting the spaces between the numbers.
+HIV_Data <- HIV_Data %>% mutate_each(funs(gsub(" ", "", .)),Number_of_Death:Number_of_Living) 
+
+head (HIV_Data)
+
+```
+
+
+```{r}
+# Pie Chart with Percentages of Death due to HIV  throughout the region
+Death <- c(800000, 62000, 130000, 56000, 15000, 44000) 
+Region <- c("Africa", "America","South-East Asia","Europe", "Eastern Mediterranean",  "Western Pacific")
+pct <- round(Death/sum(Death)*100)
+ Region<- paste(Region, pct) # add percents to labels 
+Region <- paste(Region,"%",sep="") # ad % to labels 
+pie(Death,labels = Region, col=rainbow(length(Region)),
+  	main="Pie Chart of Death due to HIV  throughout the region")
+
+```
+
+From the Pie Chart we can see Africa region has the Highest percentages of Death 72% and Southest Asia has second Highest percentages of Death 12%
+
+```{r}
+# Pie Chart with Percentages of HIV Infection throughout the region
+Infection <- c(1400000, 150000, 230000, 170000, 42000, 95000) 
+Region <- c("Africa", "America","South-East Asia","Europe", "Eastern Mediterranean",  "Western Pacific")
+pct <- round(Infection/sum(Infection)*100)
+ Region<- paste(Region, pct) # add percents to labels 
+Region <- paste(Region,"%",sep="") # ad % to labels 
+pie(Infection,labels = Region, col=rainbow(length(Region)),
+  	main="Pie Chart of Percentages of HIV Infection throughout the region")
+
+```
+
+From the Pie Chart we can see Africa region has the Highest percentages of Infection 67% and Southest Asia has second Highest percentages of Infection 11%
+
+```{r}
+#install.packages("reshape")
+library(reshape)
+
+HIV_Death1 <- data.frame(Region=c('Africa','America','South East Asia','Europe','Eastern Mediterranean', 'Western Pacific'), Total_Death= c(800000, 62000, 130000, 56000, 15000, 44000), Infection=c(1400000, 150000, 230000, 170000, 42000, 95000) , Living_With_HIV=c(25500000, 3400000,  3500000, 2500000, 330000,  1400000 ))
+HIV_Death2 <- melt(HIV_Death1, id.vars='Region')
+
+ggplot(HIV_Death2, aes(variable, value, width=2.5)) + 
+  geom_bar(aes(fill = Region), position = "dodge", stat="identity")
+
+```
+
+From the above bar plot we can see that Africa has Highest infection rate, Highest HIv death compare to all other region. 
+
+
+Now, to chech which top 20 countries has highest rate of HIV death, Infection compare to their population I created Highest_HIV_death table in MySQL. Then from the website WHO I downloaded the data and imported to MySQL database. Then I imported that table into R. 
+
+```{r}
+# Read table Highest_Death_2015.CSV 
+HIV_Data_Highest_Death1 <- read.csv('C:/Users/sql_ent_svc/Desktop/Final_presentation_Data/Highest_Death_2015.CSV')
+
+#Cleanning the data by removing the commas. 
+Highest_Death2 <- HIV_Data_Highest_Death1 %>%  mutate_each(funs(gsub(",", "", .)), Death:total_population) 
+Highest_Death2
+
+```
+
+From this Highest_Death2 table I will creat bar plot and Pie chart to see which countries are the highest death in HIV
+
+```{r}
+# Simple Bar Plot of Highest 20 countries of HIV Death
+
+ggplot(Highest_Death2, aes(Country, Perchentage_death, width= .75)) + 
+  geom_bar(aes(fill =  Country), position = "dodge", stat="identity")
+
+# According to the bar graph here we can see that Lesotho, Congo, South Africa, Mozambique are the first Highest, 2nd highest, 3rd highest, and fourth highest HIV Death percentage respectively in regards to percentage of death. 
+
+```
+
+
+```{r}
+# Pie Chart of HIV Death throughout the Country
+Death <- c(239700 , 235100, 135500, 80000,  76800, 63300, 57500,  47200, 45600,39500, 34600, 31700 ,  31200 , 30300 ,   26800 ,  26000 ,  20800, 18100, 17000, 15500) 
+Country <- c("Nigeria", " South Africa","India","Tanzania ", "Mozambique",  "Uganda", " Kenya", "   Ethiopia","Malawi"," Zimbabwe ", " Cameroon ",  " Congo", "  Cote d'Ivoire ", "Zambia ",  "Indonesia", " China", "Thailand","Ukrain"," USA ", " Lesotho")
+
+pie(Death,labels = Country, col=rainbow(length(Country)),
+  	main="Pie Chart of HIV Death throughout the Country")
+
+#According to the piechart here NIgeria, South Africa, and India are the first highest, 2nd Higest and 3rd highest nation of HIV Total Death respectively in regards to total death due to HIV in 2015. 
+```
+
+I downloaded HIV Transmission from to child, HIV counselling Receive, HIV Theraphy receive data from World Health Organization database into my computer desktop and import them from my desktop to MySQL database into the following  Mother_Child_Transmission, HIV_Counselling_Receive, HIV_Theraphy_Coverage  table respectively. After inserting the values I creat a join statement into MySQL to combine those three tables. My quesry is as follows:
+
+(SELECT * FROM Mother_Child_Transmission AS m
+                          INNER JOIN HIV_Counselling_Receive AS c
+                          ON m. Country_Name = c. Country_Name
+                          INNER JOIN HIV_Theraphy_Coverage AS t
+                          ON c. Country_Name = t. Country_Name;  )
+                          
+  I save those entry into my desktop as  Result_Transmission_Counselling_Theraphy1.CSV file and read the file into R markdown by following read.csv statement. 
+
+
+```{r}
+HIV_Data_Counselling <- read.csv('C:/Users/sql_ent_svc/Desktop/Final_presentation_Data/Result_Transmission_Counselling_Theraphy1.CSV')
+
+head (HIV_Data_Counselling)
+
+```
+
+
+After inserting the values I creat a join statement into MySQL to combine the values of the two tables Result_Transmission_Counselling_Theraphy1.CSV and Highest_Death_2015.CSV . My quesry is as follows:
+
+(SELECT * FROM Highest_HIV_death AS h
+                          INNER JOIN HIV_Counselling_Receive AS c
+                          ON h. Country_Name = c. Country_Name
+                          INNER JOIN HIV_Theraphy_Coverage AS t
+                          ON h. Country_Name = t. Country_Name
+                          INNER JOIN Mother_Child_Transmission AS m
+                          ON h. Country_Name = m. Country_Name;)
+                          
+  I save those entry into my desktop as  Result_Highest_Transmission_Counselling_Theraphy1.CSV file and read the file into R markdown by following read.csv statement. 
+
+```{r}
+#Reade the file
+HIV_Data_HighestRisk <- read.csv('C:/Users/sql_ent_svc/Desktop/Final_presentation_Data/Result_Highest_Transmission_Counselling_Theraphy1.CSV', header = TRUE, stringsAsFactors = TRUE)
+
+
+#Cleanning the data by removing dot, comma, and spaces. 
+HIV_Data_HighestRisk1 <- HIV_Data_HighestRisk %>%
+    mutate_each(funs(as.character(.)), total_death:total_population) %>%
+    mutate_each(funs(gsub(",", "", .)),total_death:total_population) %>%
+  mutate_each(funs(gsub(" ", "", .)),Receive_Counselling:Receive_antiretrovirals_per) %>%
+    mutate_each(funs(as.numeric(.)), total_death:total_population)
+
+head (HIV_Data_HighestRisk1)
+HIV_Data_HighestRisk1
+
+```
+
+
+```{r}
+# Convering the Char variable type data into numeric variable type data for our statistical research purposes. 
+
+HIV_Data_HighestRisk2 <- transform(HIV_Data_HighestRisk1, Receive_Counselling = as.numeric(Receive_Counselling))
+HIV_Data_HighestRisk2 <- transform(HIV_Data_HighestRisk2, Receive_Counselling_PerThousand = as.numeric(Receive_Counselling_PerThousand))
+HIV_Data_HighestRisk2 <- transform(HIV_Data_HighestRisk2, Receive_Therapy_per  = as.numeric(Receive_Therapy_per))
+HIV_Data_HighestRisk2 <- transform(HIV_Data_HighestRisk2, Receive_Therapy = as.numeric(Receive_Therapy))
+HIV_Data_HighestRisk2 <- transform(HIV_Data_HighestRisk2, antiretrovirals_preventing  = as.numeric(antiretrovirals_preventing ))
+HIV_Data_HighestRisk2 <- transform(HIV_Data_HighestRisk2, Need_antiretrovirals   = as.numeric (Need_antiretrovirals  ))
+HIV_Data_HighestRisk2 <- transform(HIV_Data_HighestRisk2, Receive_antiretrovirals_per  = as.numeric(Receive_antiretrovirals_per))
+
+st = as.data.frame(HIV_Data_HighestRisk2) 
+str(st)
+
+```
+
+
+```{r}
+#Finding Correlation Coefficient between the variables to see which variable has most impact to the HIV death or infection. 
+
+x <- HIV_Data_HighestRisk2[2]
+y <- HIV_Data_HighestRisk2[3]
+cor(x, y)
+#total_death and total_population has  weak positive correlation 0.1078012 which means if population increases, death also increase. 
+
+x <- HIV_Data_HighestRisk2[2]
+y <- HIV_Data_HighestRisk2[6]
+cor(x, y)
+# total_death and Receive_Counselling has weak negative correlation  -0.1057016 which means if counselling increase death decrease.   
+
+x <- HIV_Data_HighestRisk2[2]
+y <- HIV_Data_HighestRisk2[7]
+cor(x, y)
+# total_death and Receive_Theraphy has negative correlation -0.1372914 which means if theraphy increases, percentage of death decreases. 
+
+x <- HIV_Data_HighestRisk2[2]
+y <- HIV_Data_HighestRisk2[9]
+cor(x, y)
+
+# total_death and  antiretrovirals_preventing has strong positive correlation 0.6591505 which means if the countries which have higher rate of HIV death need more antiretrovirals Preventing Medicine.
+
+x <- HIV_Data_HighestRisk2[2]
+y <- HIV_Data_HighestRisk2[11]
+cor(x, y)
+# total_death and Receive_antiretrovirals_per has negative correlation -0.1068921 which means if more antiretrovirals receive, total death of HIV death decreases. 
+
+pairs(HIV_Data_HighestRisk2) # Correlation coefficient for all the pairs. 
+
+```
+
+```{r}
+#Finding a regression model for the HIV death variable with the help of those variable which has most impact on HIV death variable 
+
+input <- st[,c("total_death","Receive_Counselling_PerThousand","Receive_Therapy_per","Receive_antiretrovirals_per")]
+model <- lm( total_death ~ Receive_Counselling_PerThousand + Receive_Therapy_per + Receive_antiretrovirals_per, data=input)
+# Show the model.
+print(model)
+
+# Get the Intercept and coefficients as vector elements.
+cat("# # # # The Coefficient Values # # # ","\n")
+
+a <- coef(model)[1]
+print(a)
+
+Counselling <- coef(model)[2]
+Theraphy <- coef(model)[3]
+Antiretroviral_receive <- coef(model)[4]
+
+print(Counselling)
+print(Theraphy)
+print(Antiretroviral_receive)
+
+
+```
+
+```{r}
+#Regression Model: HIV_death_Control_Model = 90440.87 +(-22.51496 )*Receive_Counselling_PerThousand+(-515.9909 )*Receive_Therapy_per+(7.225037 )*Receive_antiretrovirals_per
+
+```
+
+Conclussion: First, I have shown here which region has highest rate of HIV death and infection, then I showed which countries have highest rate of HIV death and infection and then by using correlation and regression analysis I showed the most impact variable on HIV death and infection. Finally, I can say from my research above that Counselling, theraphy and antiretroviral receive has the most impact on HIV controlling. And the above regression model and correlation analysis clearly stated my conclussion. 
